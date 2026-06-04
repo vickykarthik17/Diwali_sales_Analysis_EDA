@@ -1,0 +1,28 @@
+[client]
+toolbarMode = "minimal"
+showErrorDetails = false
+showWarningOnDirectExecution = false
+
+[logger]
+level = "error"
+
+[server]
+port = 8501
+enableCORS = true
+enableXsrfProtection = true
+maxUploadSize = 200
+enableWebsocketCompression = true
+websocketClientHeartbeatInterval = 20
+websocketServerHeartbeatInterval = 20
+timeoutSeconds = 300
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#ff6b35"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f2f6"
+textColor = "#262730"
+font = "sans serif"

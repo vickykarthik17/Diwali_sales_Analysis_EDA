@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from datetime import datetime
+import warnings
+warnings.filterwarnings("ignore")
 
 st.set_page_config(
     page_title="Diwali Sales Analysis",
@@ -11,6 +13,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Disable deprecation warnings
+st.set_option('deprecation.showPyplotGlobalUse', False)
 
 # Custom styling
 st.markdown("""
@@ -26,58 +31,84 @@ st.markdown("*Advanced Analytics & Customer Insights*")
 # Load data with caching
 @st.cache_data
 def load_data():
-    df = pd.read_csv("Diwali Sales Data.csv", encoding="unicode_escape")
-    df.drop(columns=["Status", "unnamed1"], inplace=True, errors="ignore")
-    df.dropna(inplace=True)
-    if "Amount" in df.columns:
-        df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
-    return df
+    try:
+        df = pd.read_csv("Diwali Sales Data.csv", encoding="unicode_escape")
+        df.drop(columns=["Status", "unnamed1"], inplace=True, errors="ignore")
+        df.dropna(inplace=True)
+        if "Amount" in df.columns:
+            df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce")
+        return df
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
+        return None
 
 df = load_data()
+
+if df is None:
+    st.stop()
 
 # ============ SIDEBAR FILTERS ============
 st.sidebar.header("🔍 Filters")
 
-# Multi-level filters
+# Initialize session state for filters to persist
+if 'selected_states' not in st.session_state:
+    st.session_state.selected_states = sorted(df["State"].unique())[:5]  # Default to first 5 states
+
+if 'selected_gender' not in st.session_state:
+    st.session_state.selected_gender = sorted(df["Gender"].unique())
+
+if 'selected_age' not in st.session_state:
+    st.session_state.selected_age = sorted(df["Age Group"].unique())
+
+if 'selected_occupation' not in st.session_state:
+    st.session_state.selected_occupation = sorted(df["Occupation"].unique())[:10]
+
+if 'selected_category' not in st.session_state:
+    st.session_state.selected_category = sorted(df["Product_Category"].unique())
+
+if 'selected_marital' not in st.session_state:
+    st.session_state.selected_marital = sorted(df["Marital_Status"].unique())
+
+# Multi-level filters with smaller defaults to reduce load
 states = st.sidebar.multiselect(
     "Select States",
     options=sorted(df["State"].unique()),
-    default=sorted(df["State"].unique()),
+    default=st.session_state.selected_states,
     help="Filter data by states"
 )
 
 gender = st.sidebar.multiselect(
     "Select Gender",
     options=sorted(df["Gender"].unique()),
-    default=sorted(df["Gender"].unique()),
+    default=st.session_state.selected_gender,
     help="Filter by customer gender"
 )
 
 age_groups = st.sidebar.multiselect(
     "Select Age Groups",
     options=sorted(df["Age Group"].unique()),
-    default=sorted(df["Age Group"].unique()),
+    default=st.session_state.selected_age,
     help="Filter by age demographics"
 )
 
 occupations = st.sidebar.multiselect(
     "Select Occupations",
     options=sorted(df["Occupation"].unique()),
-    default=sorted(df["Occupation"].unique()),
+    default=st.session_state.selected_occupation,
     help="Filter by occupation"
 )
 
 product_categories = st.sidebar.multiselect(
     "Select Product Categories",
     options=sorted(df["Product_Category"].unique()),
-    default=sorted(df["Product_Category"].unique()),
+    default=st.session_state.selected_category,
     help="Filter by product type"
 )
 
 marital_status = st.sidebar.multiselect(
     "Select Marital Status",
     options=sorted(df["Marital_Status"].unique()),
-    default=sorted(df["Marital_Status"].unique()),
+    default=st.session_state.selected_marital,
     help="Filter by marital status"
 )
 
