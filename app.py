@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
 import numpy as np
-from datetime import datetime
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -42,73 +41,81 @@ def load_data():
         st.error(f"Error loading data: {e}")
         return None
 
+@st.cache_data
+def get_filter_options(df):
+    """Cache filter options to avoid recalculation"""
+    return {
+        'states': sorted(df["State"].unique()),
+        'genders': sorted(df["Gender"].unique()),
+        'age_groups': sorted(df["Age Group"].unique()),
+        'occupations': sorted(df["Occupation"].unique()),
+        'categories': sorted(df["Product_Category"].unique()),
+        'marital': sorted(df["Marital_Status"].unique())
+    }
+
+@st.cache_data
+def precompute_aggregations(df):
+    """Pre-compute heavy aggregations"""
+    return {
+        'gender_sales': df.groupby("Gender")["Amount"].sum().sort_values(ascending=False),
+        'state_sales': df.groupby("State")["Amount"].sum().sort_values(ascending=False),
+        'occupation_sales': df.groupby("Occupation")["Amount"].sum().sort_values(ascending=False),
+        'category_sales': df.groupby("Product_Category")["Amount"].sum().sort_values(ascending=False),
+        'zone_sales': df.groupby("Zone")["Amount"].sum(),
+        'age_sales': df.groupby("Age Group")["Amount"].sum(),
+        'marital_sales': df.groupby("Marital_Status")["Amount"].sum()
+    }
+
 df = load_data()
 
 if df is None:
     st.stop()
 
+filter_opts = get_filter_options(df)
+agg_data = precompute_aggregations(df)
+
 # ============ SIDEBAR FILTERS ============
 st.sidebar.header("🔍 Filters")
 
-# Initialize session state for filters to persist
-if 'selected_states' not in st.session_state:
-    st.session_state.selected_states = sorted(df["State"].unique())[:5]  # Default to first 5 states
-
-if 'selected_gender' not in st.session_state:
-    st.session_state.selected_gender = sorted(df["Gender"].unique())
-
-if 'selected_age' not in st.session_state:
-    st.session_state.selected_age = sorted(df["Age Group"].unique())
-
-if 'selected_occupation' not in st.session_state:
-    st.session_state.selected_occupation = sorted(df["Occupation"].unique())[:10]
-
-if 'selected_category' not in st.session_state:
-    st.session_state.selected_category = sorted(df["Product_Category"].unique())
-
-if 'selected_marital' not in st.session_state:
-    st.session_state.selected_marital = sorted(df["Marital_Status"].unique())
-
-# Multi-level filters with smaller defaults to reduce load
 states = st.sidebar.multiselect(
     "Select States",
-    options=sorted(df["State"].unique()),
-    default=st.session_state.selected_states,
+    options=filter_opts['states'],
+    default=filter_opts['states'][:5],
     help="Filter data by states"
 )
 
 gender = st.sidebar.multiselect(
     "Select Gender",
-    options=sorted(df["Gender"].unique()),
-    default=st.session_state.selected_gender,
+    options=filter_opts['genders'],
+    default=filter_opts['genders'],
     help="Filter by customer gender"
 )
 
 age_groups = st.sidebar.multiselect(
     "Select Age Groups",
-    options=sorted(df["Age Group"].unique()),
-    default=st.session_state.selected_age,
+    options=filter_opts['age_groups'],
+    default=filter_opts['age_groups'],
     help="Filter by age demographics"
 )
 
 occupations = st.sidebar.multiselect(
     "Select Occupations",
-    options=sorted(df["Occupation"].unique()),
-    default=st.session_state.selected_occupation,
+    options=filter_opts['occupations'],
+    default=filter_opts['occupations'][:10],
     help="Filter by occupation"
 )
 
 product_categories = st.sidebar.multiselect(
     "Select Product Categories",
-    options=sorted(df["Product_Category"].unique()),
-    default=st.session_state.selected_category,
+    options=filter_opts['categories'],
+    default=filter_opts['categories'],
     help="Filter by product type"
 )
 
 marital_status = st.sidebar.multiselect(
     "Select Marital Status",
-    options=sorted(df["Marital_Status"].unique()),
-    default=st.session_state.selected_marital,
+    options=filter_opts['marital'],
+    default=filter_opts['marital'],
     help="Filter by marital status"
 )
 
@@ -128,26 +135,256 @@ st.markdown("### 📈 Key Performance Indicators")
 
 col1, col2, col3, col4, col5, col6 = st.columns(6)
 
+total_sales = filtered_df['Amount'].sum()
+total_orders = len(filtered_df)
+avg_order_value = filtered_df['Amount'].mean()
+unique_customers = filtered_df['User_ID'].nunique()
+avg_quantity = filtered_df['Orders'].mean()
+top_product = filtered_df['Product_Category'].value_counts().index[0] if len(filtered_df) > 0 else "N/A"
+
 with col1:
-    total_sales = filtered_df['Amount'].sum()
-    st.metric("💰 Total Sales", f"₹{total_sales:,.0f}", 
-              delta=f"₹{total_sales/len(states):.0f} per state" if states else None)
+    st.metric("💰 Total Sales", f"₹{total_sales:,.0f}")
 
 with col2:
-    total_orders = len(filtered_df)
     st.metric("📦 Total Orders", f"{total_orders:,}")
 
 with col3:
-    avg_order_value = filtered_df['Amount'].mean()
-    st.metric("💵 Avg Order Value", f"₹{avg_order_value:,.0f}")
+    st.metric("💵 Avg Order", f"₹{avg_order_value:,.0f}")
 
 with col4:
-    unique_customers = filtered_df['User_ID'].nunique()
-    st.metric("👥 Unique Customers", f"{unique_customers:,}")
+    st.metric("👥 Customers", f"{unique_customers:,}")
 
 with col5:
-    avg_quantity = filtered_df['Orders'].mean()
-    st.metric("📊 Avg Quantity", f"{avg_quantity:.1f}")
+    st.metric("📊 Qty", f"{avg_quantity:.1f}")
+
+with col6:
+    st.metric("🏆 Top", top_product[:8])
+
+st.markdown("---")
+
+# ============ TABS FOR ORGANIZATION ============
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "📊 Sales Overview", 
+    "👥 Customer Analysis", 
+    "🛍️ Product Insights", 
+    "📍 Geo Analysis",
+    "📋 Data View"
+])
+
+# ============ TAB 1: SALES OVERVIEW ============
+with tab1:
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        gender_sales = filtered_df.groupby("Gender")["Amount"].sum().sort_values(ascending=False)
+        fig = px.bar(
+            x=gender_sales.values,
+            y=gender_sales.index,
+            orientation='h',
+            title="Gender-wise Sales",
+            labels={'x': 'Sales Amount (₹)', 'y': 'Gender'},
+            color=gender_sales.values,
+            color_continuous_scale='Viridis'
+        )
+        fig.update_layout(height=300, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        gender_pct = (filtered_df.groupby("Gender")["Amount"].sum() / filtered_df["Amount"].sum() * 100)
+        fig = px.pie(
+            values=gender_pct.values,
+            names=gender_pct.index,
+            title="Sales % by Gender"
+        )
+        fig.update_layout(height=300)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        marital_sales = filtered_df.groupby("Marital_Status")["Amount"].sum().sort_values(ascending=False)
+        fig = px.bar(
+            x=marital_sales.values,
+            y=marital_sales.index,
+            orientation='h',
+            title="Sales by Marital Status",
+            labels={'x': 'Sales Amount (₹)', 'y': 'Status'}
+        )
+        fig.update_layout(height=300, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        marital_count = filtered_df.groupby("Marital_Status").size()
+        fig = px.bar(
+            x=marital_count.index,
+            y=marital_count.values,
+            title="Orders by Marital Status",
+            labels={'x': 'Status', 'y': 'Count'}
+        )
+        fig.update_layout(height=300, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+# ============ TAB 2: CUSTOMER ANALYSIS ============
+with tab2:
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        age_sales = filtered_df.groupby("Age Group")["Amount"].sum().sort_values(ascending=False)
+        fig = px.bar(
+            x=age_sales.index,
+            y=age_sales.values,
+            title="Sales by Age Group",
+            labels={'x': 'Age Group', 'y': 'Sales (₹)'},
+            color=age_sales.values,
+            color_continuous_scale='Blues'
+        )
+        fig.update_layout(height=300, showlegend=False, xaxis_tickangle=-45)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        age_count = filtered_df.groupby("Age Group").size()
+        fig = px.bar(
+            x=age_count.index,
+            y=age_count.values,
+            title="Customer Count by Age",
+            labels={'x': 'Age Group', 'y': 'Count'}
+        )
+        fig.update_layout(height=300, showlegend=False, xaxis_tickangle=-45)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    st.subheader("Customer Segmentation")
+    col1, col2, col3, col4 = st.columns(4)
+    
+    q1, q3 = filtered_df['Amount'].quantile([0.25, 0.75])
+    high_val = len(filtered_df[filtered_df['Amount'] > q3])
+    med_val = len(filtered_df[(filtered_df['Amount'] <= q3) & (filtered_df['Amount'] > q1)])
+    low_val = len(filtered_df[filtered_df['Amount'] <= q1])
+    
+    with col1:
+        st.metric("High-Value", f"{high_val:,}")
+    with col2:
+        st.metric("Medium-Value", f"{med_val:,}")
+    with col3:
+        st.metric("Low-Value", f"{low_val:,}")
+    with col4:
+        st.metric("Repeat Customers", f"{len(filtered_df[filtered_df['Orders'] > 1]):,}")
+
+# ============ TAB 3: PRODUCT INSIGHTS ============
+with tab3:
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        top_products = filtered_df.groupby("Product_Category")["Amount"].sum().sort_values(ascending=False).head(10)
+        fig = px.bar(
+            x=top_products.values,
+            y=top_products.index,
+            orientation='h',
+            title="Top 10 Product Categories",
+            labels={'x': 'Sales (₹)', 'y': ''},
+            color=top_products.values,
+            color_continuous_scale='RdYlGn'
+        )
+        fig.update_layout(height=400, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        product_count = filtered_df['Product_Category'].value_counts().head(10)
+        fig = px.bar(
+            x=product_count.values,
+            y=product_count.index,
+            orientation='h',
+            title="Most Ordered Categories",
+            labels={'x': 'Count', 'y': ''}
+        )
+        fig.update_layout(height=400, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    st.subheader("Product Stats (Top 15)")
+    product_stats = filtered_df.groupby("Product_Category").agg({
+        "Amount": ["sum", "mean", "count"]
+    }).round(0)
+    product_stats.columns = ["Total", "Avg", "Orders"]
+    product_stats = product_stats.sort_values("Total", ascending=False).head(15)
+    st.dataframe(product_stats, use_container_width=True)
+
+# ============ TAB 4: GEO ANALYSIS ============
+with tab4:
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        state_sales = filtered_df.groupby("State")["Amount"].sum().sort_values(ascending=False).head(15)
+        fig = px.bar(
+            x=state_sales.values,
+            y=state_sales.index,
+            orientation='h',
+            title="Top 15 States by Sales",
+            labels={'x': 'Sales (₹)', 'y': ''},
+            color=state_sales.values,
+            color_continuous_scale='Mako'
+        )
+        fig.update_layout(height=500, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        state_count = filtered_df['State'].value_counts().head(15)
+        fig = px.bar(
+            x=state_count.values,
+            y=state_count.index,
+            orientation='h',
+            title="Top 15 States by Orders",
+            labels={'x': 'Count', 'y': ''}
+        )
+        fig.update_layout(height=500, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    st.subheader("Zone Analysis")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        zone_sales = filtered_df.groupby("Zone")["Amount"].sum().sort_values(ascending=False)
+        fig = px.bar(
+            x=zone_sales.index,
+            y=zone_sales.values,
+            title="Sales by Zone",
+            labels={'x': 'Zone', 'y': 'Sales (₹)'}
+        )
+        fig.update_layout(height=300, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        zone_count = filtered_df['Zone'].value_counts()
+        fig = px.pie(
+            values=zone_count.values,
+            names=zone_count.index,
+            title="Zone Distribution %"
+        )
+        fig.update_layout(height=300)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col3:
+        col_a, col_b = st.columns(1)
+        st.metric("States", len(filtered_df["State"].unique()))
+        st.metric("Zones", len(filtered_df["Zone"].unique()))
+        st.metric("Avg/State", f"₹{filtered_df.groupby('State')['Amount'].sum().mean():,.0f}")
+
+# ============ TAB 5: DATA VIEW ============
+with tab5:
+    st.subheader("Filtered Dataset")
+    st.info(f"📊 {len(filtered_df):,} records | {len(df):,} total")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        csv = filtered_df.to_csv(index=False)
+        st.download_button("📥 Download CSV", csv, "diwali_sales.csv", "text/csv")
+    with col2:
+        st.metric("Records", len(filtered_df))
+    with col3:
+        st.metric("Columns", len(filtered_df.columns))
+    
+    rows = st.slider("Rows:", 10, 500, 50)
+    st.dataframe(filtered_df.head(rows), use_container_width=True, height=400)
+
+st.markdown("---")
+st.markdown("⚡ *Optimized Dashboard - v3.0*")
 
 with col6:
     top_product = filtered_df['Product_Category'].value_counts().index[0] if len(filtered_df) > 0 else "N/A"
